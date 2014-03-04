@@ -8,8 +8,8 @@
 
 #import "MP.h"
 
-//NSString *const kMPServer = @"http://localhost:3000";
-NSString *const kMPServer = @"http://t1.ziyue.tv:3000";
+NSString *const kMPServer = @"http://localhost:3000";
+//NSString *const kMPServer = @"http://t1.ziyue.tv:3000";
 
 static NSString *_applicationId;
 static NSString *_clientKey;

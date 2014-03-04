@@ -12,6 +12,7 @@
 @implementation MPQuery {
     AFHTTPRequestOperationManager *manager;
     NSMutableArray *sorts;
+    NSMutableDictionary *where;
 }
 
 + (MPQuery *)queryWithClassName:(NSString *)className {
@@ -52,10 +53,17 @@
         _skip = 0;
         
         sorts = [[NSMutableArray alloc] init];
+        where = [[NSMutableDictionary alloc] init];
         manager = [AFHTTPRequestOperationManager manager];
         [[manager requestSerializer] setValue:[MP getApplicationId] forHTTPHeaderField:@"AppId"];
     }
     return self;
+}
+
+- (void) reset
+{
+    [sorts removeAllObjects];
+    [where removeAllObjects];
 }
 
 - (void)includeKey:(NSString *)key {
@@ -93,7 +101,7 @@
  @param object The object that must be equalled.
  */
 - (void)whereKey:(NSString *)key equalTo:(id)object {
-    
+    [where setObject:object forKey:key];
 }
 
 /*!
@@ -102,7 +110,7 @@
  @param object The object that provides an upper bound.
  */
 - (void)whereKey:(NSString *)key lessThan:(id)object {
-    
+    [where setObject:@{@"$lt": object} forKey:key];
 }
 
 /*!
@@ -111,7 +119,7 @@
  @param object The object that must be equalled.
  */
 - (void)whereKey:(NSString *)key lessThanOrEqualTo:(id)object {
-    
+    [where setObject:@{@"$lte": object} forKey:key];
 }
 
 /*!
@@ -120,7 +128,7 @@
  @param object The object that must be equalled.
  */
 - (void)whereKey:(NSString *)key greaterThan:(id)object {
-    
+    [where setObject:@{@"$gt": object} forKey:key];
 }
 
 /*!
@@ -129,7 +137,7 @@
  @param object The object that must be equalled.
  */
 - (void)whereKey:(NSString *)key greaterThanOrEqualTo:(id)object {
-    
+    [where setObject:@{@"$gte": object} forKey:key];
 }
 
 /*!
@@ -138,7 +146,7 @@
  @param object The object that must not be equalled.
  */
 - (void)whereKey:(NSString *)key notEqualTo:(id)object {
-    
+    [where setObject:@{@"$ne": object} forKey:key];
 }
 
 /*!
@@ -147,7 +155,7 @@
  @param array The possible values for the key's object.
  */
 - (void)whereKey:(NSString *)key containedIn:(NSArray *)array {
-    
+    [where setObject:@{@"$in": array} forKey:key];
 }
 
 /*!
@@ -156,7 +164,7 @@
  @param array The list of values the key's object should not be.
  */
 - (void)whereKey:(NSString *)key notContainedIn:(NSArray *)array {
-    
+    [where setObject:@{@"$nin": array} forKey:key];
 }
 
 /*!
@@ -165,7 +173,7 @@
  @param array The array of values to search for.
  */
 - (void)whereKey:(NSString *)key containsAllObjectsInArray:(NSArray *)array {
-    
+    [where setObject:@{@"$all": array} forKey:key];
 }
 
 /** @name Adding String Constraints */
@@ -177,7 +185,7 @@
  @param regex The regular expression pattern to match.
  */
 - (void)whereKey:(NSString *)key matchesRegex:(NSString *)regex {
-    
+    [where setObject:@{@"$all": regex} forKey:key];
 }
 
 /*!
@@ -188,7 +196,7 @@
  @param modifiers Any of the following supported PCRE modifiers:<br><code>i</code> - Case insensitive search<br><code>m</code> - Search across multiple lines of input
  */
 - (void)whereKey:(NSString *)key matchesRegex:(NSString *)regex modifiers:(NSString *)modifiers {
-    
+    [where setObject:@{@"$regex": regex, @"$options": modifiers } forKey:key];
 }
 
 /*!
@@ -198,7 +206,7 @@
  @param substring The substring that the value must contain.
  */
 - (void)whereKey:(NSString *)key containsString:(NSString *)substring {
-    
+    [where setObject:[NSString stringWithFormat:@"/%@/", substring] forKey:key];
 }
 
 /*!
@@ -208,7 +216,7 @@
  @param prefix The substring that the value must start with.
  */
 - (void)whereKey:(NSString *)key hasPrefix:(NSString *)prefix {
-    
+    [where setObject:[NSString stringWithFormat:@"/^%@/", prefix] forKey:key];
 }
 
 /*!
@@ -218,7 +226,7 @@
  @param suffix The substring that the value must end with.
  */
 - (void)whereKey:(NSString *)key hasSuffix:(NSString *)suffix {
-    
+    [where setObject:[NSString stringWithFormat:@"/%@^/", suffix] forKey:key];
 }
 
 /** @name Adding Subqueries */
@@ -396,10 +404,14 @@
         if (block != nil) {
             block(object, nil);
         }
+        
+        [self reset];
     } failure:^(AFHTTPRequestOperation *operation, NSError *error) {
         if (block != nil) {
             block(nil, error);
         }
+        
+        [self reset];
     }];
 }
 
@@ -480,10 +492,19 @@
     
     NSMutableDictionary *parameters = [@{ @"limit": @(_limit), @"skip": @(_skip) } mutableCopy];
     if ([sorts count] > 0) {
-        [parameters setObject:sorts forKey:@"sort"];
+        NSError *error;
+        NSData *registerData = [NSJSONSerialization dataWithJSONObject:sorts options:NSJSONWritingPrettyPrinted error:&error];
+        NSString * ss = [[NSString alloc] initWithData:registerData encoding:NSUTF8StringEncoding];
+        NSLog(@"sort:%@",ss);
+        [parameters setObject:ss forKey:@"sort"];
     }
-    
-//    [manager setRequestSerializer:[AFJSONRequestSerializer serializer]];
+    if ([where count] > 0) {
+        NSError *error;
+        NSData *rData = [NSJSONSerialization dataWithJSONObject:where options:NSJSONWritingPrettyPrinted error:&error];
+        NSString * whereJSON = [[NSString alloc] initWithData:rData encoding:NSUTF8StringEncoding];
+        NSLog(@"where:%@",whereJSON);
+        [parameters setObject:whereJSON forKey:@"where"];
+    }
     
     [manager GET:url parameters:parameters success:^(AFHTTPRequestOperation *operation, id responseObject) {
         
@@ -496,10 +517,14 @@
         if (block != nil) {
             block(array, nil);
         }
+        
+        [self reset];
     } failure:^(AFHTTPRequestOperation *operation, NSError *error) {
         if (block != nil) {
             block(nil, error);
         }
+        
+        [self reset];
     }];
 
 }
